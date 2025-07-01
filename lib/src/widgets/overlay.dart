@@ -45,7 +45,7 @@ class DescribedFeatureOverlay extends StatefulWidget {
   /// It is intended for this to contain a [Text] widget, however, you can pass
   /// any [Widget].
   /// The overlay uses a [DefaultTextStyle] for the title, which is a combination
-  /// of [TextTheme.headline6] from [Theme] and the [textColor].
+  /// of [TextTheme.titleLarge] from [Theme] and the [textColor].
   final Widget? title;
 
   /// This is the second content widget, i.e. it is displayed below [description].
@@ -53,7 +53,7 @@ class DescribedFeatureOverlay extends StatefulWidget {
   /// It is intended for this to contain a [Text] widget, however, you can pass
   /// any [Widget].
   /// The overlay uses a [DefaultTextStyle] for the description, which is a combination
-  /// of [TextTheme.bodyText2] from [Theme] and the [textColor].
+  /// of [TextTheme.bodyMedium] from [Theme] and the [textColor].
   final Widget? description;
 
   /// This is usually an [Icon].
@@ -137,6 +137,9 @@ class DescribedFeatureOverlay extends StatefulWidget {
   /// all of the current steps are dismissed.
   final Future<bool> Function()? onBackgroundTap;
 
+  /// Offset we can add to custom override a feature discovery when the position of the background is totally off
+  final Offset? offsetBackgroundOverride;
+
   const DescribedFeatureOverlay({
     Key? key,
     required this.featureId,
@@ -162,6 +165,7 @@ class DescribedFeatureOverlay extends StatefulWidget {
     this.barrierDismissible = true,
     this.backgroundDismissible = false,
     this.onBackgroundTap,
+    this.offsetBackgroundOverride,
   })  : assert(
           barrierDismissible == true || onDismiss == null,
           'Cannot provide both a barrierDismissible and onDismiss function\n'
@@ -230,7 +234,8 @@ class _DescribedFeatureOverlayState extends State<DescribedFeatureOverlay>
 
   @override
   void didChangeDependencies() {
-    _screenSize = MediaQuery.of(context).size;
+    final size = MediaQuery.of(context).size;
+    _screenSize = Size(min(size.width, 500), min(size.height, 500)); // ;
 
     try {
       _bloc = Bloc.of(context);
@@ -448,7 +453,9 @@ class _DescribedFeatureOverlayState extends State<DescribedFeatureOverlay>
     final isBackgroundCentered = _isCloseToTopOrBottom(anchor);
     final backgroundRadius = min(_screenSize.width, _screenSize.height) *
         (isBackgroundCentered ? 1.0 : 0.7);
+
     return backgroundRadius;
+    //return 100.0;//NICOLAS ZEIN testing
   }
 
   Offset? _backgroundPosition(Offset anchor, ContentLocation contentLocation) {
@@ -461,6 +468,7 @@ class _DescribedFeatureOverlayState extends State<DescribedFeatureOverlay>
       final startingBackgroundPosition = anchor;
 
       Offset? endingBackgroundPosition;
+
       switch (contentLocation) {
         case ContentLocation.above:
           endingBackgroundPosition = Offset(
@@ -468,14 +476,27 @@ class _DescribedFeatureOverlayState extends State<DescribedFeatureOverlay>
                   width / 2.0 +
                   (_isOnLeftHalfOfScreen(anchor) ? -20.0 : 20.0),
               anchor.dy - (width / 2.0) + 80.0);
+
           break;
+
         case ContentLocation.below:
           endingBackgroundPosition = Offset(
-              anchor.dx -
-                  width / 2.0 +
-                  (_isOnLeftHalfOfScreen(anchor) ? -20.0 : 20.0),
-              anchor.dy + (width / 2.0) - 80.0);
+            anchor.dx -
+                width / 2.0 +
+                (_isOnLeftHalfOfScreen(anchor) ? -20.0 : 20.0) +
+                (widget.offsetBackgroundOverride == null
+                    ? 0
+                    : widget.offsetBackgroundOverride!.dx),
+            anchor.dy +
+                (width / 2.0) -
+                80.0 +
+                (widget.offsetBackgroundOverride == null
+                    ? 0
+                    : widget.offsetBackgroundOverride!.dy),
+          );
+
           break;
+
         case ContentLocation.trivial:
           throw ArgumentError.value(contentLocation);
       }
@@ -485,17 +506,23 @@ class _DescribedFeatureOverlayState extends State<DescribedFeatureOverlay>
           final adjustedPercent =
               const Interval(0.0, 0.8, curve: Curves.easeOut)
                   .transform(_transitionProgress!);
+
           return Offset.lerp(startingBackgroundPosition,
               endingBackgroundPosition, adjustedPercent);
+
         case FeatureOverlayState.completing:
           return endingBackgroundPosition;
+
         case FeatureOverlayState.dismissing:
           return Offset.lerp(endingBackgroundPosition,
               startingBackgroundPosition, _transitionProgress!);
+
         case FeatureOverlayState.opened:
           return endingBackgroundPosition;
+
         case FeatureOverlayState.closed:
           return startingBackgroundPosition;
+
         case null:
           return throw ArgumentError.notNull();
       }
@@ -527,6 +554,7 @@ class _DescribedFeatureOverlayState extends State<DescribedFeatureOverlay>
       return anchor;
     } else {
       final startingBackgroundPosition = anchor;
+
       final endingBackgroundPosition = Offset(
           anchor.dx + (_isOnLeftHalfOfScreen(anchor) ? -20.0 : 20.0),
           anchor.dy +
@@ -539,17 +567,23 @@ class _DescribedFeatureOverlayState extends State<DescribedFeatureOverlay>
           final adjustedPercent =
               const Interval(0.0, 0.8, curve: Curves.easeOut)
                   .transform(_transitionProgress!);
+
           return Offset.lerp(startingBackgroundPosition,
               endingBackgroundPosition, adjustedPercent);
+
         case FeatureOverlayState.completing:
           return endingBackgroundPosition;
+
         case FeatureOverlayState.dismissing:
           return Offset.lerp(endingBackgroundPosition,
               startingBackgroundPosition, _transitionProgress!);
+
         case FeatureOverlayState.opened:
           return endingBackgroundPosition;
+
         case FeatureOverlayState.closed:
           return startingBackgroundPosition;
+
         case null:
           throw ArgumentError.notNull();
       }
@@ -748,7 +782,25 @@ class _Background extends StatelessWidget {
         width: constraints.biggest.width,
         height: constraints.biggest.height,
         decoration: BoxDecoration(
-            shape: BoxShape.circle, color: color.withOpacity(opacity)),
+          shape: BoxShape.circle,
+          color: color.withOpacity(opacity),
+          boxShadow: [
+            BoxShadow(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black38
+                    : Colors.black12,
+                offset: const Offset(-2, -2),
+                blurRadius: 2,
+                spreadRadius: 1),
+            BoxShadow(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black38
+                    : Colors.black12,
+                offset: const Offset(2, 2),
+                blurRadius: 2,
+                spreadRadius: 1)
+          ],
+        ),
       ),
     );
 
